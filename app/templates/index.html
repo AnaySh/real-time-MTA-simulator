@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MTA Ridership Explorer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f5f5f7;
+        color: #1c1c1e;
+      }
+      header {
+        background: #0a84ff;
+        color: white;
+        padding: 1.5rem 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .logo {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
+      }
+      main {
+        max-width: 960px;
+        margin: 2rem auto;
+        padding: 0 1.5rem 3rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+      form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1.5rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        font-weight: 600;
+        gap: 0.35rem;
+        font-size: 0.95rem;
+        color: #2c2c2e;
+      }
+      select,
+      button {
+        padding: 0.6rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid #d1d1d6;
+        font-size: 0.95rem;
+      }
+      select {
+        background: #f2f2f7;
+        color: #1c1c1e;
+      }
+      button {
+        grid-column: 1 / -1;
+        background: #0a84ff;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      button:not(:disabled):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 12px rgba(10, 132, 255, 0.35);
+      }
+      .summary {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+      }
+      .summary-card {
+        flex: 1 1 240px;
+        padding: 1.25rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+      }
+      th,
+      td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #e5e5ea;
+        font-size: 0.925rem;
+      }
+      th {
+        background: #f2f2f7;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+      }
+      tbody tr:nth-child(even) {
+        background: #fafafa;
+      }
+      .tables {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1.5rem;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .error {
+        color: #ff3b30;
+        font-weight: 600;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="{{ url_for('images', filename='icon.png') }}" alt="MTA Icon" class="logo" />
+      <div>
+        <h1>MTA Ridership Explorer</h1>
+        <p>Estimate on-boardings and off-boardings by station using live Socrata data.</p>
+      </div>
+    </header>
+
+    <main>
+      <form id="request-form">
+        <label>
+          Month
+          <select id="month" required></select>
+        </label>
+        <label>
+          Day of Week
+          <select id="day_of_week" required>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday" selected>Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </label>
+        <label>
+          Hour
+          <select id="hour_of_day" required></select>
+        </label>
+        <label>
+          Train Line
+          <select id="line" required></select>
+        </label>
+        <label>
+          Direction
+          <select id="direction" required>
+            <option value="0">0 – North/East-bound</option>
+            <option value="1" selected>1 – South/West-bound</option>
+          </select>
+        </label>
+        <label>
+          Stop
+          <select id="complex_id" required>
+            <option value="">Select a line &amp; direction first</option>
+          </select>
+        </label>
+        <label>
+          Year
+          <select id="year" required>
+            <option value="2025" selected>2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+          </select>
+        </label>
+        <button type="submit">Fetch Ridership</button>
+      </form>
+
+      <p id="error" class="error hidden"></p>
+
+      <section id="results" class="hidden">
+        <div class="summary">
+          <div class="summary-card">
+            <h2>Estimated On-boardings</h2>
+            <p id="onboard-total">0</p>
+          </div>
+          <div class="summary-card">
+            <h2>Estimated Off-boardings</h2>
+            <p id="offboard-total">0</p>
+          </div>
+        </div>
+
+        <div class="tables">
+          <div>
+            <h3>Top 30 On-board Destinations</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Destination</th>
+                  <th>Complex ID</th>
+                  <th>Avg Ridership</th>
+                </tr>
+              </thead>
+              <tbody id="onboard-table"></tbody>
+            </table>
+          </div>
+          <div>
+            <h3>Top 30 Off-board Origins</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Origin</th>
+                  <th>Complex ID</th>
+                  <th>Avg Ridership</th>
+                </tr>
+              </thead>
+              <tbody id="offboard-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const lineSelect = document.getElementById("line");
+      const directionSelect = document.getElementById("direction");
+      const stopSelect = document.getElementById("complex_id");
+      const form = document.getElementById("request-form");
+      const resultsSection = document.getElementById("results");
+      const errorBox = document.getElementById("error");
+      const onboardTable = document.getElementById("onboard-table");
+      const offboardTable = document.getElementById("offboard-table");
+      const onboardTotal = document.getElementById("onboard-total");
+      const offboardTotal = document.getElementById("offboard-total");
+
+      // Populate months and hours
+      const monthSelect = document.getElementById("month");
+      const months = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December"
+      ];
+      months.forEach((name, index) => {
+        const option = document.createElement("option");
+        option.value = index + 1;
+        option.textContent = `${index + 1} – ${name}`;
+        if (index === 8) {
+          option.selected = true;
+        }
+        monthSelect.appendChild(option);
+      });
+
+      const hourSelect = document.getElementById("hour_of_day");
+      for (let hour = 0; hour < 24; hour++) {
+        const option = document.createElement("option");
+        option.value = hour;
+        option.textContent = `${hour}:00`;
+        if (hour === 9) {
+          option.selected = true;
+        }
+        hourSelect.appendChild(option);
+      }
+
+      // Common NYC subway lines (can be refined later or fetched dynamically)
+      const lines = ["A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","1","2","3","4","5","6","7","S"];
+      lines.forEach((line) => {
+        const option = document.createElement("option");
+        option.value = line;
+        option.textContent = line;
+        if (line === "L") {
+          option.selected = true;
+        }
+        lineSelect.appendChild(option);
+      });
+
+      async function loadStops() {
+        const line = lineSelect.value;
+        const direction = directionSelect.value;
+        stopSelect.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Loading stops...";
+        stopSelect.appendChild(placeholder);
+
+        try {
+          const params = new URLSearchParams({ line, direction });
+          const response = await fetch(`/stops?${params.toString()}`);
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+          const data = await response.json();
+
+          stopSelect.innerHTML = "";
+          if (!data.stops.length) {
+            const emptyOption = document.createElement("option");
+            emptyOption.value = "";
+            emptyOption.textContent = "No stops found for this combination";
+            stopSelect.appendChild(emptyOption);
+            return;
+          }
+
+          data.stops.forEach(({ id, name }) => {
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = `${name} (${id})`;
+            stopSelect.appendChild(option);
+          });
+        } catch (err) {
+          stopSelect.innerHTML = "";
+          const errorOption = document.createElement("option");
+          errorOption.value = "";
+          errorOption.textContent = "Failed to load stops";
+          stopSelect.appendChild(errorOption);
+          showError(err.message || "Failed to load stops.");
+        }
+      }
+
+      lineSelect.addEventListener("change", loadStops);
+      directionSelect.addEventListener("change", loadStops);
+
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.remove("hidden");
+        resultsSection.classList.add("hidden");
+      }
+
+      function clearError() {
+        errorBox.textContent = "";
+        errorBox.classList.add("hidden");
+      }
+
+      function renderTableRows(container, rows, keyPrefix) {
+        container.innerHTML = "";
+        rows.slice(0, 30).forEach((row, index) => {
+          const tr = document.createElement("tr");
+          const nameCell = document.createElement("td");
+          nameCell.textContent = row[`${keyPrefix}_station_complex_name`] ?? "N/A";
+
+          const idCell = document.createElement("td");
+          idCell.textContent = row[`${keyPrefix}_station_complex_id`];
+
+          const ridershipCell = document.createElement("td");
+          ridershipCell.textContent = Number(row["estimated_average_ridership"] || 0).toFixed(3);
+
+          tr.appendChild(nameCell);
+          tr.appendChild(idCell);
+          tr.appendChild(ridershipCell);
+          container.appendChild(tr);
+        });
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearError();
+        form.querySelector("button").disabled = true;
+
+        try {
+          const payload = {
+            complex_id: stopSelect.value,
+            line: lineSelect.value,
+            direction: Number(directionSelect.value),
+            year: Number(document.getElementById("year").value),
+            month: Number(monthSelect.value),
+            day_of_week: document.getElementById("day_of_week").value,
+            hour_of_day: Number(hourSelect.value)
+          };
+
+          if (!payload.complex_id) {
+            showError("Please select a stop.");
+            return;
+          }
+
+          const response = await fetch("/ridership", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+
+          onboardTotal.textContent = data.summary.onboard_total.toFixed(3);
+          offboardTotal.textContent = data.summary.offboard_total.toFixed(3);
+
+          const sortedOnboards = [...data.onboards].sort(
+            (a, b) => (b.estimated_average_ridership || 0) - (a.estimated_average_ridership || 0)
+          );
+          const sortedOffboards = [...data.offboards].sort(
+            (a, b) => (b.estimated_average_ridership || 0) - (a.estimated_average_ridership || 0)
+          );
+
+          renderTableRows(onboardTable, sortedOnboards, "destination");
+          renderTableRows(offboardTable, sortedOffboards, "origin");
+
+          resultsSection.classList.remove("hidden");
+        } catch (err) {
+          showError(err.message || "Failed to fetch ridership data.");
+        } finally {
+          form.querySelector("button").disabled = false;
+        }
+      });
+
+      // Load initial stops for defaults
+      loadStops();
+    </script>
+  </body>
+</html>
+

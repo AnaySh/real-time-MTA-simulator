@@ -29,15 +29,34 @@ Example usage:
 # Handles both directional (N/S) and non-directional stop IDs
 
 import csv
+from pathlib import Path
+
 import pandas as pd
 
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
 class ComplexesData:
-    def __init__(self, csv_path: str = 'data/Complexes.csv', gtfs_dir: str = 'data/gtfs_subway'):
+    def __init__(
+        self,
+        csv_path: str | Path | None = None,
+        gtfs_dir: str | Path | None = None,
+    ):
+        if csv_path is None:
+            csv_path = DATA_DIR / "Complexes.csv"
+        else:
+            csv_path = Path(csv_path)
+
+        if gtfs_dir is None:
+            gtfs_dir = DATA_DIR / "gtfs_subway"
+        else:
+            gtfs_dir = Path(gtfs_dir)
+
         self.complex_id_by_gtfs = {}
         self.complex_info = {}
         
         # Load GTFS stops data
-        self._stops = pd.read_csv(f"{gtfs_dir}/stops.txt")
+        self._stops = pd.read_csv(gtfs_dir / "stops.txt")
         self.stop_name_map = dict(zip(self._stops.stop_id, self._stops.stop_name))
 
         with open(csv_path, newline='', encoding='utf-8') as csvfile:
@@ -156,7 +175,7 @@ class ComplexesData:
         return self.stop_name_map.get(gtfs_stop_id + 'N')
 
 # Example usage:
-# complexes = ComplexesData('data/Complexes.csv')
+# complexes = ComplexesData()
 # print(complexes.get_complex_id_by_gtfs_stop_id('L03'))
 # print(complexes.get_number_of_stations('602'))
 # print(complexes.get_gtfs_stop_ids_by_complex_id('602'))

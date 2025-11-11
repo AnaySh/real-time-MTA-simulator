@@ -95,7 +95,7 @@ def get_ridership_data(
     
     # Convert numeric columns
     numeric_cols = ['year', 'month', 'hour_of_day', 'origin_station_complex_id', 
-                   'destination_station_complex_id', 'estimated_trips']
+                   'destination_station_complex_id', 'estimated_average_ridership']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')

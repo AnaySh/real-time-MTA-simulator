@@ -35,7 +35,10 @@ from pathlib import Path
 import itertools
 import pandas as pd
 import networkx as nx
-from complexes import ComplexesData
+from src.complexes import ComplexesData
+
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 class SubwayGraph:
@@ -71,7 +74,7 @@ class SubwayGraph:
     # Graph-building
     # ------------------------------------------------------------------ #
     @classmethod
-    def build_graph(cls, gtfs_dir: str | Path = "data/gtfs_subway") -> None:
+    def build_graph(cls, gtfs_dir: str | Path | None = None) -> None:
         """Build the subway graph from GTFS data and station complex information.
         
         This method creates a directed graph where:
@@ -94,7 +97,10 @@ class SubwayGraph:
             >>> print(f"Graph built with {len(SubwayGraph.G)} stations")
             Graph built with 472 stations
         """
-        gtfs_dir = Path(gtfs_dir)
+        if gtfs_dir is None:
+            gtfs_dir = DATA_DIR / "gtfs_subway"
+        else:
+            gtfs_dir = Path(gtfs_dir)
 
         # Initialize complexes data
         cls._complexes = ComplexesData()
