@@ -227,6 +227,26 @@ def get_onboardings(
                 print(f"Direct path via {line}: weight={weight:.3f}, contribution={contribution:.3f}")
         else:
             shortest_paths = SubwayGraph.all_shortest_paths(origin_str, dest_str)
+            
+            # Filter out unrealistically long paths (outliers)
+            if shortest_paths:
+                # Calculate distance for each path using get_directions_for_path
+                path_distances = []
+                for path in shortest_paths:
+                    _, total_distance = SubwayGraph.get_directions_for_path(path)
+                    path_distances.append((path, total_distance))
+                
+                # Filter: keep only paths <= 2x the shortest path distance
+                min_distance = min(d for _, d in path_distances)
+                threshold = min_distance * 2.0
+                shortest_paths = [path for path, d in path_distances if d <= threshold]
+                
+                if verbose:
+                    original_count = len(path_distances)
+                    filtered_count = len(shortest_paths)
+                    if original_count != filtered_count:
+                        print(f"Filtered paths: {original_count} -> {filtered_count} (removed {original_count - filtered_count} outliers)")
+
             total_paths = 0
             num_paths = 0
             for path in shortest_paths:
@@ -309,13 +329,33 @@ def get_offboardings(
 
         contribution = 0.0
 
-        if connections and line in connections and origin_int in stops_before_set:
+        if connections and line in connections and origin_int in stops_before_set: # should check that train is not in the oppositte direction
             weight = 1.0 / len(connections)
             contribution = row["estimated_average_ridership"] * weight
             if verbose:
                 print(f"Direct path via {line}: weight={weight:.3f}, contribution={contribution:.3f}")
         else:
             shortest_paths = SubwayGraph.all_shortest_paths(destination_str, origin_str)
+            
+            # Filter out unrealistically long paths (outliers)
+            if shortest_paths:
+                # Calculate distance for each path using get_directions_for_path
+                path_distances = []
+                for path in shortest_paths:
+                    _, total_distance = SubwayGraph.get_directions_for_path(path)
+                    path_distances.append((path, total_distance))
+                
+                # Filter: keep only paths <= 2x the shortest path distance
+                min_distance = min(d for _, d in path_distances)
+                threshold = min_distance * 2.0
+                shortest_paths = [path for path, d in path_distances if d <= threshold]
+                
+                if verbose:
+                    original_count = len(path_distances)
+                    filtered_count = len(shortest_paths)
+                    if original_count != filtered_count:
+                        print(f"Filtered paths: {original_count} -> {filtered_count} (removed {original_count - filtered_count} outliers)")
+            
             total_paths = 0
             num_paths = 0
             for path in shortest_paths:
