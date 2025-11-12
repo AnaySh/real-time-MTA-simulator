@@ -10,6 +10,13 @@ import requests
 import pandas as pd
 import io
 
+# Dataset endpoints by year
+DATASET_ENDPOINTS = {
+    2023: "https://data.ny.gov/resource/uhf3-t34z.csv",
+    2024: "https://data.ny.gov/resource/jsu2-fbtj.csv",
+    2025: "https://data.ny.gov/resource/y2qv-fytt.csv"
+}
+
 # List of columns to query from the API
 QUERY_COLUMNS = [
     "year",
@@ -38,7 +45,7 @@ def get_ridership_data(
     Parameters
     ----------
     year : int, optional
-        Filter by year
+        Filter by year (2023, 2024, or 2025)
     month : int, optional
         Filter by month (1-12)
     day_of_week : str, optional
@@ -56,9 +63,23 @@ def get_ridership_data(
     -------
     pandas.DataFrame
         DataFrame containing the ridership data
+        
+    Raises
+    ------
+    ValueError
+        If year is provided but not in the supported range (2023-2025)
     """
-    # Base URL for the dataset
-    url = "https://data.ny.gov/resource/y2qv-fytt.csv"
+    # Determine the appropriate dataset endpoint based on year
+    if year is not None:
+        if year not in DATASET_ENDPOINTS:
+            available_years = sorted(DATASET_ENDPOINTS.keys())
+            raise ValueError(
+                f"Year {year} is not supported. Available years: {available_years}"
+            )
+        url = DATASET_ENDPOINTS[year]
+    else:
+        # Default to 2025 if no year is specified
+        url = DATASET_ENDPOINTS[2025]
     
     # Build query parameters
     params = {}
