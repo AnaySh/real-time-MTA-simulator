@@ -20,15 +20,8 @@ Example usage:
     >>> successors = SubwayGraph.successors("618")  # 618 is Times Square's complex ID
     >>> # Find which lines connect two stations
     >>> lines = SubwayGraph.connecting_lines("618", "327")
-    >>> # Find shortest path between stations
-    >>> path = SubwayGraph.shortest_path("618", "164")  # Times Square to Union Square
-    >>> # Get directions with subway lines
-    >>> directions = SubwayGraph.get_directions("618", "164")
-    >>> print(directions)
     >>> # Get all possible shortest paths
     >>> all_paths = SubwayGraph.all_shortest_paths("618", "164")
-    >>> for path in all_paths:
-    >>>     print(SubwayGraph.get_directions_for_path(path))
 """
 
 from pathlib import Path
@@ -110,7 +103,7 @@ class SubwayGraph:
         cls._trips      = pd.read_csv(gtfs_dir / "trips.txt")
         cls._stop_times = pd.read_csv(gtfs_dir / "stop_times.txt")
 
-        # Get unique routes
+        # Get unique routes (train lines)
         routes = cls._trips['route_id'].unique()
         
         # Initialize graph
@@ -151,14 +144,16 @@ class SubwayGraph:
                             if G.has_edge(u, v):
                                 if route not in G[u][v]['lines']:
                                     G[u][v]['lines'].append(route)
+                                G[u][v]['distances'].append(j - i) # stops between complexes u and v
                             else:
-                                G.add_edge(u, v, lines=[route])
+                                G.add_edge(u, v, lines=[route], distances=[j - i])
                 except Exception as e:
                     print(f"Warning: Could not process route {route} direction {direction}: {e}")
 
         # Sort the lines list for each edge
         for u, v, data in G.edges(data=True):
             data['lines'] = sorted(data['lines'])
+            data['minimum_distance'] = min(data['distances'])
 
         cls.G = G
 
@@ -215,34 +210,6 @@ class SubwayGraph:
         """
         cls._assert_built()
         return cls.G.nodes[complex_id]["stop_name"] if complex_id in cls.G else None
-
-    @classmethod
-    def lines_at_gtfs_stop_id(cls, gtfs_stop_id: str) -> list[str]:
-        """Get all train lines that stop at a particular GTFS stop ID.
-        
-        Parameters:
-            gtfs_stop_id (str): The GTFS stop ID (e.g., "A34" or "A34N")
-            
-        Returns:
-            list[str]: Sorted list of unique train lines that stop at this GTFS stop
-            
-        Example:
-            >>> SubwayGraph.lines_at_gtfs_stop_id("A34")
-            ['A', 'C', 'E']
-        """
-        cls._assert_built()
-        # Map GTFS stop ID to complex ID
-        complex_id = cls._complexes.get_complex_id_by_gtfs_stop_id(gtfs_stop_id)
-        if not complex_id or complex_id not in cls.G:
-            return []
-
-        # Aggregate all lines from edges connected to this complex
-        lines = set()
-        for _, v, data in cls.G.out_edges(complex_id, data=True):
-            lines.update(data.get("lines", []))
-        for u, _, data in cls.G.in_edges(complex_id, data=True):
-            lines.update(data.get("lines", []))
-        return sorted(lines)
 
     @classmethod
     def lines_at_complex_id(cls, complex_id: str) -> list[str]:
@@ -337,147 +304,8 @@ class SubwayGraph:
 
     # ---------- 4. lines on a segment ----------------------------------
     @classmethod
-    def connecting_lines(cls, u: str, v: str) -> list[str]:
-        """Get all subway lines that directly connect two stations.
-        
-        Parameters:
-            u (str): Complex ID of the starting station
-            v (str): Complex ID of the destination station
-            
-        Returns:
-            list[str]: List of subway lines that connect the stations
-            
-        Example:
-            >>> SubwayGraph.connecting_lines("618", "327")  # Times Square to Grand Central
-            ['7', 'S']
-        """
-        cls._assert_built()
-        return cls.G[u][v]["lines"] if cls.G.has_edge(u, v) else []
-
-    @classmethod
-    def shortest_path(cls, start: str, end: str) -> list[str] | None:
-        """Find the shortest path between two stations.
-        
-        This method uses Dijkstra's algorithm to find the path with the fewest
-        transfers between two stations. The path is returned as a list of complex IDs.
-        
-        Parameters:
-            start (str): Complex ID of the starting station
-            end (str): Complex ID of the destination station
-            
-        Returns:
-            list[str] | None: List of complex IDs representing the path, or None if no path exists
-            
-        Example:
-            >>> SubwayGraph.shortest_path("618", "164")  # Times Square to Union Square
-            ['618', '619', '164']  # Path through 5th Ave-53rd St
-        """
-        cls._assert_built()
-        try:
-            return nx.shortest_path(cls.G, source=start, target=end)
-        except nx.NetworkXNoPath:
-            return None
-
-    @classmethod
-    def shortest_path_with_lines(cls, start: str, end: str) -> list[tuple[str, list[str]]] | None:
-        """Find the shortest path between two stations with connecting lines.
-        
-        This method returns both the stations in the path and the subway lines
-        that connect each pair of stations.
-        
-        Parameters:
-            start (str): Complex ID of the starting station
-            end (str): Complex ID of the destination station
-            
-        Returns:
-            list[tuple[str, list[str]]] | None: List of (station, lines) tuples, or None if no path exists
-            
-        Example:
-            >>> SubwayGraph.shortest_path_with_lines("618", "164")
-            [('618', ['N', 'Q', 'R', 'W']), ('619', ['E', 'M']), ('164', [])]
-        """
-        path = cls.shortest_path(start, end)
-        if not path:
-            return None
-            
-        result = []
-        for i in range(len(path) - 1):
-            current = path[i]
-            next_stop = path[i + 1]
-            lines = cls.connecting_lines(current, next_stop)
-            result.append((current, lines))
-        result.append((path[-1], []))  # Add the last station with no outgoing lines
-        return result
-
-    @classmethod
-    def get_directions(cls, start: str, end: str) -> str | None:
-        """Get human-readable directions for traveling between two stations.
-        
-        This method returns a string describing the subway lines to take and
-        where to transfer between stations.
-        
-        Parameters:
-            start (str): Complex ID of the starting station
-            end (str): Complex ID of the destination station
-            
-        Returns:
-            str | None: Directions as a string, or None if no path exists
-            
-        Example:
-            >>> SubwayGraph.get_directions("618", "164")
-            'Start at Times Square-42 St (618)
-             Take the N, Q, R, W trains to 5th Ave-53rd St (619)
-             Transfer to the E, M trains to 14th St-Union Square (164)'
-        """
-        path_with_lines = cls.shortest_path_with_lines(start, end)
-        if not path_with_lines:
-            return None
-            
-        directions = []
-        current_station = path_with_lines[0][0]
-        current_name = cls.complex_id_to_name(current_station)
-        directions.append(f"Start at {current_name} ({current_station})")
-        
-        for i in range(len(path_with_lines) - 1):
-            current_station, lines = path_with_lines[i]
-            next_station, _ = path_with_lines[i + 1]
-            next_name = cls.complex_id_to_name(next_station)
-            
-            if lines:  # If there are lines to take
-                line_str = ", ".join(lines)
-                directions.append(f"Take the {line_str} trains to {next_name} ({next_station})")
-            else:
-                directions.append(f"Transfer at {next_name} ({next_station})")
-                
-        return "\n".join(directions)
-
-    @classmethod
-    def all_shortest_paths(cls, start: str, end: str) -> list[list[str]]:
-        """Find all shortest paths between two stations.
-        
-        This method returns all possible paths that have the minimum number of
-        transfers between two stations.
-        
-        Parameters:
-            start (str): Complex ID of the starting station
-            end (str): Complex ID of the destination station
-            
-        Returns:
-            list[list[str]]: List of paths, where each path is a list of complex IDs
-            
-        Example:
-            >>> SubwayGraph.all_shortest_paths("618", "164")
-            [['618', '619', '164'], ['618', '620', '164']]
-        """
-        cls._assert_built()
-        try:
-            return list(nx.all_shortest_paths(cls.G, source=start, target=end))
-        except nx.NetworkXNoPath:
-            return []
-
-    @classmethod
     def get_directions_for_path(cls, path: list[str]) -> list[dict]:
-        """Get structured data for a specific path showing stations and available lines.
+        """Get structured data for a specific path showing stations, available lines, and distances.
         
         Parameters:
             path (list[str]): List of complex IDs representing a path
@@ -489,6 +317,8 @@ class SubwayGraph:
                 - to_station: Complex ID of destination station
                 - to_name: Name of destination station
                 - lines: List of subway lines that connect these stations
+                - distances: List of stop counts for each line
+                - minimum_distance: Minimum number of stops across all lines (or None)
                 
         Example:
             >>> path = ['618', '619', '164']
@@ -499,34 +329,46 @@ class SubwayGraph:
                     'from_name': 'Times Square-42 St',
                     'to_station': '619',
                     'to_name': '5th Ave-53rd St',
-                    'lines': ['N', 'Q', 'R', 'W']
+                    'lines': ['N', 'Q', 'R', 'W'],
+                    'distances': [2, 2, 2, 2],
+                    'minimum_distance': 2
                 },
                 {
                     'from_station': '619',
                     'from_name': '5th Ave-53rd St',
                     'to_station': '164',
                     'to_name': '14th St-Union Square',
-                    'lines': ['E', 'M']
+                    'lines': ['E', 'M'],
+                    'distances': [5, 3],
+                    'minimum_distance': 3
                 }
             ]
         """
         segments = []
+        total_distance = 0
         for i in range(len(path) - 1):
             from_station = path[i]
             to_station = path[i + 1]
             from_name = cls.complex_id_to_name(from_station)
             to_name = cls.complex_id_to_name(to_station)
-            lines = cls.connecting_lines(from_station, to_station)
+
+            if cls.G.has_edge(from_station, to_station):
+                distances = cls.G[from_station][to_station].get('distances', [])
+                lines = cls.G[from_station][to_station].get('lines', [])
             
             segments.append({
                 'from_station': from_station,
                 'from_name': from_name,
                 'to_station': to_station,
                 'to_name': to_name,
-                'lines': lines
+                'lines': lines,
+                'distances': distances,
+                'minimum_distance': min(distances) if distances else None
             })
+
+            total_distance += min(distances) if distances else 0
             
-        return segments
+        return segments, total_distance
 
     @classmethod
     def get_all_directions(cls, start: str, end: str) -> list[list[dict]]:
@@ -554,6 +396,49 @@ class SubwayGraph:
         """
         paths = cls.all_shortest_paths(start, end)
         return [cls.get_directions_for_path(path) for path in paths]
+
+    @classmethod
+    def connecting_lines(cls, u: str, v: str) -> list[str]:
+        """Get all subway lines that directly connect two stations.
+        
+        Parameters:
+            u (str): Complex ID of the starting station
+            v (str): Complex ID of the destination station
+            
+        Returns:
+            list[str]: List of subway lines that connect the stations
+            
+        Example:
+            >>> SubwayGraph.connecting_lines("618", "327")  # Times Square to Grand Central
+            ['7', 'S']
+        """
+        cls._assert_built()
+        return cls.G[u][v]["lines"] if cls.G.has_edge(u, v) else []
+
+    @classmethod
+    def all_shortest_paths(cls, start: str, end: str) -> list[list[str]]:
+        """Find all shortest paths between two stations.
+        
+        This method returns all possible paths that have the minimum number of
+        transfers between two stations.
+        
+        Parameters:
+            start (str): Complex ID of the starting station
+            end (str): Complex ID of the destination station
+            
+        Returns:
+            list[list[str]]: List of paths, where each path is a list of complex IDs
+            
+        Example:
+            >>> SubwayGraph.all_shortest_paths("618", "164")
+            [['618', '619', '164'], ['618', '620', '164']]
+        """
+        cls._assert_built()
+        try:
+            return list(nx.all_shortest_paths(cls.G, source=start, target=end))
+        except nx.NetworkXNoPath:
+            return []
+
 
 
 # ---------------------------------------------------------------------- #
